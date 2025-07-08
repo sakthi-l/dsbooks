@@ -210,13 +210,14 @@ def user_dashboard(user):
             st.info("No downloads found for this date.")
     else:
         st.info("You haven't downloaded any books yet.")
+    
     if st.button("🧹 Clear My Download History"):
-    result = logs_col.update_many(
-        {"user": user, "type": "download"},
-        {"$set": {"hidden": True}}
-    )
-    st.success(f"✅ {result.modified_count} download(s) hidden from your dashboard.")
-    rerun()
+        result = logs_col.update_many(
+            {"user": user, "type": "download"},
+            {"$set": {"hidden": True}}
+        )
+        st.success(f"✅ {result.modified_count} download(s) hidden from your dashboard.")
+        rerun()
 
 def search_books():
     st.subheader("🔎 Search Books")
