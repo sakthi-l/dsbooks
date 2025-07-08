@@ -164,6 +164,11 @@ def admin_dashboard():
 def user_dashboard(user):
     import datetime
     import re
+    logs = list(logs_col.find({
+    "user": user,
+    "type": "download",
+    "$or": [{"hidden": {"$exists": False}}, {"hidden": False}]
+}))
 
     def clean_text(text):
         if not isinstance(text, str):
@@ -176,7 +181,6 @@ def user_dashboard(user):
     st.subheader("📊 Your Dashboard")
 
     user = user.lower()
-    logs = list(logs_col.find({"user": user, "type": "download"}))
 
     if logs:
         df = pd.DataFrame(logs)
@@ -206,6 +210,13 @@ def user_dashboard(user):
             st.info("No downloads found for this date.")
     else:
         st.info("You haven't downloaded any books yet.")
+    if st.button("🧹 Clear My Download History"):
+    result = logs_col.update_many(
+        {"user": user, "type": "download"},
+        {"$set": {"hidden": True}}
+    )
+    st.success(f"✅ {result.modified_count} download(s) hidden from your dashboard.")
+    rerun()
 
 def search_books():
     st.subheader("🔎 Search Books")
