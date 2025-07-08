@@ -518,26 +518,59 @@ def delete_course():
     existing_courses = sorted(set(books_col.distinct("course")))
     course = st.selectbox("Select Course to Delete", existing_courses)
 
-    st.warning("⚠️ This will delete all books tagged with this course.")
-    if st.button("❌ Delete Course"):
-        confirm = st.checkbox("I confirm deletion of this course and all its books")
-        if confirm:
-            # Find and delete all books with this course
-            books = list(books_col.find({"course": course}))
-            deleted = 0
+    st.warning("⚠️ This will permanently delete all books tagged with this course.")
 
-            for book in books:
+    if st.button("❌ Confirm Delete Course"):
+        books = list(books_col.find({"course": course}))
+        book_ids = [book["_id"] for book in books]
+        file_ids = [book.get("file_id") for book in books if book.get("file_id")]
+
+        # Backup deleted data to session_state for undo
+        st.session_state["last_deleted_course"] = {
+            "course": course,
+            "books": books,
+            "file_data": []
+        }
+
+        # Backup file data from GridFS
+        for book in books:
+            try:
                 if book.get("file_id"):
-                    try:
-                        fs.delete(ObjectId(book["file_id"]))
-                    except:
-                        pass
-                books_col.delete_one({"_id": book["_id"]})
-                logs_col.delete_many({"book": book["title"]})
-                fav_col.delete_many({"book_id": str(book["_id"])})
-                deleted += 1
+                    file_data = fs.get(ObjectId(book["file_id"])).read()
+                    st.session_state["last_deleted_course"]["file_data"].append({
+                        "file_id": book["file_id"],
+                        "file_name": book.get("file_name"),
+                        "data": file_data
+                    })
+            except:
+                continue
 
-            st.success(f"✅ Deleted course '{course}' and {deleted} book(s).")
+        # Perform deletion
+        for fid in file_ids:
+            try:
+                fs.delete(ObjectId(fid))
+            except:
+                continue
+
+        books_col.delete_many({"_id": {"$in": book_ids}})
+        logs_col.delete_many({"book": {"$in": [book["title"] for book in books]}})
+        fav_col.delete_many({"book_id": {"$in": [str(b["_id"]) for b in books]}})
+
+        st.success(f"✅ Deleted course '{course}' and {len(books)} book(s).")
+        st.experimental_rerun()
+
+    # If something was recently deleted, show Undo option
+    if st.session_state.get("last_deleted_course"):
+        st.info(f"⏪ You deleted course: **{st.session_state['last_deleted_course']['course']}**")
+        if st.button("↩️ Undo Delete"):
+            backup = st.session_state["last_deleted_course"]
+            for book, file in zip(backup["books"], backup["file_data"]):
+                new_file_id = fs.put(file["data"], filename=file["file_name"])
+                book["_id"] = ObjectId()  # Create a new _id to avoid duplicates
+                book["file_id"] = new_file_id
+                books_col.insert_one(book)
+            st.success(f"✅ Undo successful. Restored course '{backup['course']}' with {len(backup['books'])} books.")
+            st.session_state["last_deleted_course"] = None
             rerun()
 def bulk_upload_with_gridfs():
     st.subheader("📥 Bulk Upload Books via CSV + PDF")
