@@ -216,7 +216,7 @@ def user_dashboard(user):
             {"user": user, "type": "download"},
             {"$set": {"hidden": True}}
         )
-        st.success(f"✅ {result.modified_count} download(s) hidden from your dashboard.")
+        st.success(f"✅ {result.modified_count} download(s) deleted from your dashboard.")
         rerun()
 
 def search_books():
