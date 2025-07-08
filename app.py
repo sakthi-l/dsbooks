@@ -1,4 +1,3 @@
-
 import streamlit as st
 import base64
 import bcrypt
@@ -208,38 +207,40 @@ def user_dashboard(user):
     else:
         st.info("You haven't downloaded any books yet.")
 
-
-
 def search_books():
     st.subheader("🔎 Search Books")
 
-    with st.form("public_search_form"):
-        with st.expander("🔧 Advanced Search Filters", expanded=True):
-            title = st.text_input("Title", key="public_search_title")
-            author = st.text_input("Author", key="public_search_author")
-            keyword_input = st.text_input("Keywords (any match)", key="public_search_keywords")
+    with st.expander("🔧 Advanced Search Filters", expanded=True):
+        title = st.text_input("Title", key="public_search_title")
+        author = st.text_input("Author", key="public_search_author")
+        keyword_input = st.text_input("Keywords (any match)", key="public_search_keywords")
 
+        try:
             languages = [l for l in books_col.distinct("language") if l and l.strip()]
-            default_courses = [
-                "Probability & Statistics using R", "Mathematics for Data Science",
-                "Python for Data Science", "RDBMS,SQL & Visualization",
-                "Data mining Techniques", "Artificial Intelligence and reasoning",
-                "Machine Learning", "Big Data Mining and Analytics",
-                "Predictive Analytics", "Ethics and Data Security",
-                "Applied Spatial Data Analytics Using R", "Machine Vision",
-                "Deep Learning & Applications", "Generative AI with LLMs",
-                "Social Networks and Graph Analysis", "Data Visualization Techniques",
-                "Algorithmic Trading", "Bayesian Data Analysis",
-                "Healthcare Data Analytics", "Data Science for Structural Biology",
-                "Other / Not Mapped"
-            ]
-            existing_courses = books_col.distinct("course")
-            all_courses = dedupe_courses(default_courses, existing_courses)
+        except:
+            languages = ["English", "Tamil", "Other"]
 
-            course_filter = st.selectbox("Course", ["All"] + all_courses, key="public_search_course")
-            language_filter = st.selectbox("Language", ["All"] + sorted(languages), key="public_search_language")
+        default_courses = [
+            "Probability & Statistics using R", "Mathematics for Data Science",
+            "Python for Data Science", "RDBMS,SQL & Visualization",
+            "Data mining Techniques", "Artificial Intelligence and reasoning",
+            "Machine Learning", "Big Data Mining and Analytics",
+            "Predictive Analytics", "Ethics and Data Security",
+            "Applied Spatial Data Analytics Using R", "Machine Vision",
+            "Deep Learning & Applications", "Generative AI with LLMs",
+            "Social Networks and Graph Analysis", "Data Visualization Techniques",
+            "Algorithmic Trading", "Bayesian Data Analysis",
+            "Healthcare Data Analytics", "Data Science for Structural Biology",
+            "Other / Not Mapped"
+        ]
+        existing_courses = books_col.distinct("course")
+        all_courses = dedupe_courses(default_courses, existing_courses)
 
-        submitted = st.form_submit_button("🔍 Search")
+        course_filter = st.selectbox("Course", ["All"] + all_courses, key="public_search_course")
+        language_filter = st.selectbox("Language", ["All"] + sorted(languages), key="public_search_language")
+
+    # 🔍 Left-aligned Search button
+    submitted = st.button("🔍 Search")
 
     query = {}
     filters_applied = False
