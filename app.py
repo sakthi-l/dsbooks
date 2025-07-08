@@ -26,7 +26,7 @@ db_password = st.secrets["mongodb"]["password"]  # only password in secrets
 admin_user = st.secrets["mongodb"]["admin_user"]
 admin_pass = st.secrets["mongodb"]["admin_pass"]
 
-mongo_uri = f"mongodb+srv://DATASCIENCE:{db_password}@datasciencebooks.nvf4l48.mongodb.net/?retryWrites=true&w=majority&appName=Datasciencebooks"
+mongo_uri = f"mongodb+srv://dsbook:{db_password}@cluster2.mqyyvj2.mongodb.net/?retryWrites=true&w=majority&appName=Cluster2"
 
 client = MongoClient(mongo_uri)
 db = client["library"]
