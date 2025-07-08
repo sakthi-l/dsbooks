@@ -238,9 +238,9 @@ def search_books():
         course_filter = st.selectbox("Course", ["All"] + all_courses, key="public_search_course")
         language_filter = st.selectbox("Language", ["All"] + sorted(languages), key="public_search_language")
 
-    # 🔍 Left-aligned Search button
-    submitted = st.button("🔍 Search")
-
+    col1, col2, col3 = st.columns([1, 6, 1])  # Adjust proportions as needed
+    with col1:
+        submitted = st.button("🔍 Search")
     query = {}
     filters_applied = False
 
