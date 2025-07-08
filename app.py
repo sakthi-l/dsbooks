@@ -360,6 +360,7 @@ def search_books():
 
             except Exception as e:
                 st.error(f"❌ Could not retrieve file from storage: {e}")
+                
 def add_to_bookmarks(user, book_id):
     if not fav_col.find_one({"user": user, "book_id": str(book_id)}):
         fav_col.insert_one({
