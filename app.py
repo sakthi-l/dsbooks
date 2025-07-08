@@ -226,7 +226,7 @@ def search_books():
             title = st.text_input("Title", key="public_search_title")
             author = st.text_input("Author", key="public_search_author")
             keyword_input = st.text_input("Keywords (any match)", key="public_search_keywords")
-
+            submitted = st.form_submit_button("🔍 Search")
             languages = [l for l in books_col.distinct("language") if l and l.strip()]
             default_courses = [
                 "Probability & Statistics using R", "Mathematics for Data Science",
@@ -247,7 +247,7 @@ def search_books():
             course_filter = st.selectbox("Course", ["All"] + all_courses, key="public_search_course")
             language_filter = st.selectbox("Language", ["All"] + sorted(languages), key="public_search_language")
 
-        submitted = st.form_submit_button("🔍 Search")
+        
 
     query = {}
     filters_applied = False
