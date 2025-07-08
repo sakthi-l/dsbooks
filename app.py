@@ -235,7 +235,6 @@ def search_books():
         ]
         existing_courses = books_col.distinct("course")
         all_courses = dedupe_courses(default_courses, existing_courses)
-
         course_filter = st.selectbox("Course", ["All"] + all_courses, key="public_search_course")
         language_filter = st.selectbox("Language", ["All"] + sorted(languages), key="public_search_language")
 
