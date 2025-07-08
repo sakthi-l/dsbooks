@@ -210,60 +210,50 @@ def user_dashboard(user):
 def search_books():
     st.subheader("🔎 Search Books")
 
-    with st.expander("🔧 Advanced Search Filters", expanded=True):
-        title = st.text_input("Title", key="public_search_title")
-        author = st.text_input("Author", key="public_search_author")
-        keyword_input = st.text_input("Keywords (any match)", key="public_search_keywords")
+    with st.form("public_search_form"):
+        with st.expander("🔧 Advanced Search Filters", expanded=True):
+            title = st.text_input("Title", key="public_search_title")
+            author = st.text_input("Author", key="public_search_author")
+            keyword_input = st.text_input("Keywords (any match)", key="public_search_keywords")
 
-        try:
             languages = [l for l in books_col.distinct("language") if l and l.strip()]
-        except:
-            languages = ["English", "Tamil", "Other"]
+            default_courses = [
+                "Probability & Statistics using R", "Mathematics for Data Science",
+                "Python for Data Science", "RDBMS,SQL & Visualization",
+                "Data mining Techniques", "Artificial Intelligence and reasoning",
+                "Machine Learning", "Big Data Mining and Analytics",
+                "Predictive Analytics", "Ethics and Data Security",
+                "Applied Spatial Data Analytics Using R", "Machine Vision",
+                "Deep Learning & Applications", "Generative AI with LLMs",
+                "Social Networks and Graph Analysis", "Data Visualization Techniques",
+                "Algorithmic Trading", "Bayesian Data Analysis",
+                "Healthcare Data Analytics", "Data Science for Structural Biology",
+                "Other / Not Mapped"
+            ]
+            existing_courses = books_col.distinct("course")
+            all_courses = dedupe_courses(default_courses, existing_courses)
 
-        default_courses = [
-            "Probability & Statistics using R", "Mathematics for Data Science",
-            "Python for Data Science", "RDBMS,SQL & Visualization",
-            "Data mining Techniques", "Artificial Intelligence and reasoning",
-            "Machine Learning", "Big Data Mining and Analytics",
-            "Predictive Analytics", "Ethics and Data Security",
-            "Applied Spatial Data Analytics Using R", "Machine Vision",
-            "Deep Learning & Applications", "Generative AI with LLMs",
-            "Social Networks and Graph Analysis", "Data Visualization Techniques",
-            "Algorithmic Trading", "Bayesian Data Analysis",
-            "Healthcare Data Analytics", "Data Science for Structural Biology",
-            "Other / Not Mapped"
-        ]
-        existing_courses = books_col.distinct("course")
-        all_courses = dedupe_courses(default_courses, existing_courses)
-        course_filter = st.selectbox("Course", ["All"] + all_courses, key="public_search_course")
-        language_filter = st.selectbox("Language", ["All"] + sorted(languages), key="public_search_language")
+            course_filter = st.selectbox("Course", ["All"] + all_courses, key="public_search_course")
+            language_filter = st.selectbox("Language", ["All"] + sorted(languages), key="public_search_language")
 
-    col1, col2, col3 = st.columns([1, 6, 1])  # Adjust proportions as needed
-    with col1:
-        submitted = st.button("🔍 Search")
+        submitted = st.form_submit_button("🔍 Search")
+
     query = {}
-    filters_applied = False
-
     if title:
         query["title"] = {"$regex": title, "$options": "i"}
-        filters_applied = True
     if author:
         query["author"] = {"$regex": author, "$options": "i"}
-        filters_applied = True
     if keyword_input:
         keywords = [k.strip().lower() for k in keyword_input.split(",") if k.strip()]
         query["keywords"] = {"$in": keywords}
-        filters_applied = True
     if language_filter != "All":
         query["language"] = language_filter
-        filters_applied = True
     if course_filter != "All":
         query["course"] = course_filter
-        filters_applied = True
 
     books = []
     if submitted:
-        if filters_applied:
+        if query:
             books = list(books_col.find(query).sort("uploaded_at", -1).limit(50))
         else:
             books = list(books_col.find().sort("uploaded_at", -1).limit(50))
@@ -293,7 +283,6 @@ def search_books():
                 file_name = grid_file.filename
 
                 allow_download = False
-
                 if not is_guest:
                     allow_download = True
                 else:
@@ -307,18 +296,14 @@ def search_books():
                     if not already_logged_this_book:
                         allow_download = True
 
-                session_key = f"public_logged_{book['_id']}"
-
                 if allow_download:
-                    st.download_button(
+                    if st.download_button(
                         label="📥 Download PDF",
                         data=data,
                         file_name=file_name,
                         mime="application/pdf",
                         key=f"public_download_{safe_key(book['_id'])}"
-                    )
-
-                    if not st.session_state.get(session_key):
+                    ):
                         logs_col.insert_one({
                             "type": "download",
                             "user": current_user.lower() if current_user else "guest",
@@ -328,7 +313,6 @@ def search_books():
                             "language": book.get("language"),
                             "timestamp": datetime.utcnow()
                         })
-                        st.session_state[session_key] = True
                 else:
                     st.warning("🚫 Guests can download only 1 copy of a book per day. Please log in to download more.")
 
