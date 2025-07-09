@@ -164,17 +164,12 @@ def admin_dashboard():
 def user_dashboard(user):
     import datetime
     import re
-
     user = user.lower()
-
     st.subheader("📊 Your Dashboard")
-
     logs = list(logs_col.find({
-        "user": user,
-        "type": "download",
-        "$or": [{"hidden": {"$exists": False}}, {"hidden": False}]
-    }).sort("timestamp", -1))
-
+    "user": user,
+    "type": "download"
+}))
     def clean_text(text):
         if not isinstance(text, str):
             return text
@@ -309,24 +304,21 @@ def search_books():
                         allow_download = True
 
                 if allow_download:
-                    if st.download_button(
-                        label="📥 Download PDF",
-                        data=data,
-                        file_name=file_name,
-                        mime="application/pdf",
-                        key=f"public_download_{safe_key(book['_id'])}"
-                    ):
-                        logs_col.insert_one({
+                    if st.download_button(label="📥 Download PDF",data=data,file_name=file_name,mime="application/pdf",key=f"public_download_{safe_key(book['_id'])}"):
+                        current_user_final = current_user.lower() if current_user else "guest"
+                        log_entry = {
                             "type": "download",
-                            "user": current_user.lower() if current_user else "guest",
+                            "user": current_user_final,
                             "ip": ip,
                             "book": book["title"],
                             "author": book.get("author"),
                             "language": book.get("language"),
                             "timestamp": datetime.utcnow()
-                        })
-                else:
-                    st.warning("🚫 Guests can download only 1 copy of a book per day. Please log in to download more.")
+                        }
+                        logs_col.insert_one(log_entry)
+                        st.success(f"✅ Logged download for: {current_user_final}")
+                    else:
+                        st.warning("🚫 Guests can download only 1 copy of a book per day. Please log in to download more.")
 
             except Exception as e:
                 st.error(f"❌ Could not retrieve file from storage: {e}")
