@@ -8,6 +8,7 @@ import plotly.express as px
 from bson import ObjectId
 import socket
 import gridfs
+import fitz
 import re
 def rerun():
     st.rerun()
