@@ -318,16 +318,27 @@ def search_books():
                     )
 
                     if not st.session_state.get(session_key):
-                        logs_col.insert_one({
-                            "type": "download",
+                        download_log_exists = logs_col.find_one({
                             "user": current_user.lower() if current_user else "guest",
-                            "ip": ip,
                             "book": book["title"],
-                            "author": book.get("author"),
-                            "language": book.get("language"),
-                            "timestamp": datetime.utcnow()
+                            "timestamp": {
+                                "$gte": today_start
+                            }
                         })
+                    
+                        if not download_log_exists:
+                            logs_col.insert_one({
+                                "type": "download",
+                                "user": current_user.lower() if current_user else "guest",
+                                "ip": ip,
+                                "book": book["title"],
+                                "author": book.get("author"),
+                                "language": book.get("language"),
+                                "timestamp": datetime.utcnow()
+                            })
+                    
                         st.session_state[session_key] = True
+
                 else:
                     st.warning("🚫 Guests can download only 1 copy of a book per day. Please log in to download more.")
 
