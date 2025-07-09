@@ -174,9 +174,13 @@ def user_dashboard(user):
         return text
 
     st.subheader("📊 Your Dashboard")
-
     user = user.lower()
+
     logs = list(logs_col.find({"user": user, "type": "download"}))
+
+    show_hidden = st.checkbox("Show cleared downloads", value=False)
+    if not show_hidden:
+        logs = [log for log in logs if not log.get("hidden", False)]
 
     if logs:
         df = pd.DataFrame(logs)
@@ -202,14 +206,40 @@ def user_dashboard(user):
         st.write(f"📥 Download History for {selected_date}")
         if not df_filtered.empty:
             st.dataframe(df_filtered[['book', 'author', 'language', 'timestamp']])
+
+            if st.button("🧹 Clear This Date's Downloads"):
+                book_ids = df_filtered[["book_clean", "author_clean", "language"]].drop_duplicates().to_dict("records")
+                for entry in book_ids:
+                    logs_col.update_many({
+                        "user": user,
+                        "book": {"$regex": entry["book_clean"], "$options": "i"},
+                        "author": {"$regex": entry["author_clean"], "$options": "i"},
+                        "language": entry["language"]
+                    }, {
+                        "$set": {"hidden": True}
+                    })
+                st.success("Selected downloads hidden from your view.")
+                rerun()
         else:
             st.info("No downloads found for this date.")
     else:
         st.info("You haven't downloaded any books yet.")
 
-
+    st.write("⭐ **Your Bookmarked Books**")
+    favs = list(fav_col.find({"user": user}))
+    if favs:
+        for f in favs:
+            book = books_col.find_one({"_id": ObjectId(f["book_id"])})
+            if book:
+                st.markdown(f"- **{book['title']}** by *{book.get('author', 'N/A')}*")
+    else:
+        st.info("You haven't bookmarked any books.")
 
 def search_books():
+    import fitz  # PyMuPDF
+    from io import BytesIO
+    from PIL import Image
+
     st.subheader("🔎 Search Books")
 
     with st.form("public_search_form"):
@@ -291,6 +321,16 @@ def search_books():
                 data = grid_file.read()
                 file_name = grid_file.filename
 
+                # Book preview (PyMuPDF)
+                try:
+                    doc = fitz.open(stream=data, filetype="pdf")
+                    page = doc.load_page(0)
+                    pix = page.get_pixmap()
+                    img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                    st.image(img, caption="📖 Preview of first page", use_column_width=True)
+                except Exception as e:
+                    st.warning(f"⚠️ Could not render preview: {e}")
+
                 allow_download = False
 
                 if not is_guest:
@@ -321,11 +361,9 @@ def search_books():
                         download_log_exists = logs_col.find_one({
                             "user": current_user.lower() if current_user else "guest",
                             "book": book["title"],
-                            "timestamp": {
-                                "$gte": today_start
-                            }
+                            "timestamp": {"$gte": today_start}
                         })
-                    
+
                         if not download_log_exists:
                             logs_col.insert_one({
                                 "type": "download",
@@ -336,15 +374,38 @@ def search_books():
                                 "language": book.get("language"),
                                 "timestamp": datetime.utcnow()
                             })
-                    
-                        st.session_state[session_key] = True
 
+                        st.session_state[session_key] = True
                 else:
                     st.warning("🚫 Guests can download only 1 copy of a book per day. Please log in to download more.")
 
+                # ⭐ Bookmark
+                if not is_guest:
+                    is_bookmarked = fav_col.find_one({
+                        "user": current_user.lower(),
+                        "book_id": str(book["_id"])
+                    })
+
+                    if is_bookmarked:
+                        if st.button("⭐ Remove Bookmark", key=f"remove_fav_{book['_id']}"):
+                            fav_col.delete_one({
+                                "user": current_user.lower(),
+                                "book_id": str(book["_id"])
+                            })
+                            st.success("Removed from bookmarks")
+                            rerun()
+                    else:
+                        if st.button("⭐ Add Bookmark", key=f"add_fav_{book['_id']}"):
+                            fav_col.insert_one({
+                                "user": current_user.lower(),
+                                "book_id": str(book["_id"]),
+                                "timestamp": datetime.utcnow()
+                            })
+                            st.success("Bookmarked!")
+                            rerun()
+
             except Exception as e:
                 st.error(f"❌ Could not retrieve file from storage: {e}")
-
 def delete_book():
     st.subheader("🗑️ Delete Book")
 
