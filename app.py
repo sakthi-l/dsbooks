@@ -317,8 +317,8 @@ def search_books():
                         }
                         logs_col.insert_one(log_entry)
                         st.success(f"✅ Logged download for: {current_user_final}")
-                    else:
-                        st.warning("🚫 Guests can download only 1 copy of a book per day. Please log in to download more.")
+                else:
+                    st.warning("🚫 Guests can download only 1 copy of a book per day. Please log in to download more.")
 
             except Exception as e:
                 st.error(f"❌ Could not retrieve file from storage: {e}")
