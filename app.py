@@ -164,12 +164,7 @@ def admin_dashboard():
 def user_dashboard(user):
     import datetime
     import re
-    user = user.lower()
-    st.subheader("📊 Your Dashboard")
-    logs = list(logs_col.find({
-    "user": user,
-    "type": "download"
-}))
+
     def clean_text(text):
         if not isinstance(text, str):
             return text
@@ -178,41 +173,41 @@ def user_dashboard(user):
         text = re.sub(r'[^\x20-\x7E]', '', text)
         return text
 
+    st.subheader("📊 Your Dashboard")
+
+    user = user.lower()
+    logs = list(logs_col.find({"user": user, "type": "download"}))
+
     if logs:
-        st.write("🧾 Total Downloads:", len(logs))
         df = pd.DataFrame(logs)
         df['timestamp'] = pd.to_datetime(df['timestamp'])
 
-        selected_date = st.date_input("📅 Filter downloads by date", value=datetime.datetime.utcnow().date())
+        selected_date = st.date_input(
+            "Filter downloads by date", 
+            value=datetime.datetime.utcnow().date()
+        )
 
         df_filtered = df[df['timestamp'].dt.date == selected_date]
-
-        if df_filtered.empty:
-            st.info("No downloads found for this date. Showing your most recent 10 downloads:")
-            df_filtered = df.head(10)
 
         df_filtered['book_clean'] = df_filtered['book'].apply(clean_text)
         df_filtered['author_clean'] = df_filtered['author'].apply(clean_text)
 
         dupes = df_filtered[df_filtered.duplicated(subset=['book_clean', 'author_clean'], keep=False)]
         if not dupes.empty:
-            st.warning("⚠️ Duplicates detected BEFORE deduplication:")
+            st.write("⚠️ Duplicates detected BEFORE deduplication:")
             st.dataframe(dupes[['book', 'author', 'language', 'timestamp']])
 
         df_filtered = df_filtered.drop_duplicates(subset=['book_clean', 'author_clean', 'language'])
 
-        st.write(f"📥 Download History for {selected_date}:")
-        st.dataframe(df_filtered[['book', 'author', 'language', 'timestamp']])
+        st.write(f"📥 Download History for {selected_date}")
+        if not df_filtered.empty:
+            st.dataframe(df_filtered[['book', 'author', 'language', 'timestamp']])
+        else:
+            st.info("No downloads found for this date.")
     else:
         st.info("You haven't downloaded any books yet.")
 
-    if st.button("🧹 Clear My Download History"):
-        result = logs_col.update_many(
-            {"user": user, "type": "download"},
-            {"$set": {"hidden": True}}
-        )
-        st.success(f"✅ {result.modified_count} download(s) deleted from your dashboard.")
-        rerun()
+
 
 def search_books():
     st.subheader("🔎 Search Books")
@@ -246,21 +241,28 @@ def search_books():
         submitted = st.form_submit_button("🔍 Search")
 
     query = {}
+    filters_applied = False
+
     if title:
         query["title"] = {"$regex": title, "$options": "i"}
+        filters_applied = True
     if author:
         query["author"] = {"$regex": author, "$options": "i"}
+        filters_applied = True
     if keyword_input:
         keywords = [k.strip().lower() for k in keyword_input.split(",") if k.strip()]
         query["keywords"] = {"$in": keywords}
+        filters_applied = True
     if language_filter != "All":
         query["language"] = language_filter
+        filters_applied = True
     if course_filter != "All":
         query["course"] = course_filter
+        filters_applied = True
 
     books = []
     if submitted:
-        if query:
+        if filters_applied:
             books = list(books_col.find(query).sort("uploaded_at", -1).limit(50))
         else:
             books = list(books_col.find().sort("uploaded_at", -1).limit(50))
@@ -290,6 +292,7 @@ def search_books():
                 file_name = grid_file.filename
 
                 allow_download = False
+
                 if not is_guest:
                     allow_download = True
                 else:
@@ -303,20 +306,28 @@ def search_books():
                     if not already_logged_this_book:
                         allow_download = True
 
+                session_key = f"public_logged_{book['_id']}"
+
                 if allow_download:
-                    if st.download_button(label="📥 Download PDF",data=data,file_name=file_name,mime="application/pdf",key=f"public_download_{safe_key(book['_id'])}"):
-                        current_user_final = current_user.lower() if current_user else "guest"
-                        log_entry = {
+                    st.download_button(
+                        label="📥 Download PDF",
+                        data=data,
+                        file_name=file_name,
+                        mime="application/pdf",
+                        key=f"public_download_{safe_key(book['_id'])}"
+                    )
+
+                    if not st.session_state.get(session_key):
+                        logs_col.insert_one({
                             "type": "download",
-                            "user": current_user_final,
+                            "user": current_user.lower() if current_user else "guest",
                             "ip": ip,
                             "book": book["title"],
                             "author": book.get("author"),
                             "language": book.get("language"),
                             "timestamp": datetime.utcnow()
-                        }
-                        logs_col.insert_one(log_entry)
-                        st.success(f"✅ Logged download for: {current_user_final}")
+                        })
+                        st.session_state[session_key] = True
                 else:
                     st.warning("🚫 Guests can download only 1 copy of a book per day. Please log in to download more.")
 
@@ -506,59 +517,26 @@ def delete_course():
     existing_courses = sorted(set(books_col.distinct("course")))
     course = st.selectbox("Select Course to Delete", existing_courses)
 
-    st.warning("⚠️ This will permanently delete all books tagged with this course.")
+    st.warning("⚠️ This will delete all books tagged with this course.")
+    if st.button("❌ Delete Course"):
+        confirm = st.checkbox("I confirm deletion of this course and all its books")
+        if confirm:
+            # Find and delete all books with this course
+            books = list(books_col.find({"course": course}))
+            deleted = 0
 
-    if st.button("❌ Confirm Delete Course"):
-        books = list(books_col.find({"course": course}))
-        book_ids = [book["_id"] for book in books]
-        file_ids = [book.get("file_id") for book in books if book.get("file_id")]
-
-        # Backup deleted data to session_state for undo
-        st.session_state["last_deleted_course"] = {
-            "course": course,
-            "books": books,
-            "file_data": []
-        }
-
-        # Backup file data from GridFS
-        for book in books:
-            try:
+            for book in books:
                 if book.get("file_id"):
-                    file_data = fs.get(ObjectId(book["file_id"])).read()
-                    st.session_state["last_deleted_course"]["file_data"].append({
-                        "file_id": book["file_id"],
-                        "file_name": book.get("file_name"),
-                        "data": file_data
-                    })
-            except:
-                continue
+                    try:
+                        fs.delete(ObjectId(book["file_id"]))
+                    except:
+                        pass
+                books_col.delete_one({"_id": book["_id"]})
+                logs_col.delete_many({"book": book["title"]})
+                fav_col.delete_many({"book_id": str(book["_id"])})
+                deleted += 1
 
-        # Perform deletion
-        for fid in file_ids:
-            try:
-                fs.delete(ObjectId(fid))
-            except:
-                continue
-
-        books_col.delete_many({"_id": {"$in": book_ids}})
-        logs_col.delete_many({"book": {"$in": [book["title"] for book in books]}})
-        fav_col.delete_many({"book_id": {"$in": [str(b["_id"]) for b in books]}})
-
-        st.success(f"✅ Deleted course '{course}' and {len(books)} book(s).")
-        st.experimental_rerun()
-
-    # If something was recently deleted, show Undo option
-    if st.session_state.get("last_deleted_course"):
-        st.info(f"⏪ You deleted course: **{st.session_state['last_deleted_course']['course']}**")
-        if st.button("↩️ Undo Delete"):
-            backup = st.session_state["last_deleted_course"]
-            for book, file in zip(backup["books"], backup["file_data"]):
-                new_file_id = fs.put(file["data"], filename=file["file_name"])
-                book["_id"] = ObjectId()  # Create a new _id to avoid duplicates
-                book["file_id"] = new_file_id
-                books_col.insert_one(book)
-            st.success(f"✅ Undo successful. Restored course '{backup['course']}' with {len(backup['books'])} books.")
-            st.session_state["last_deleted_course"] = None
+            st.success(f"✅ Deleted course '{course}' and {deleted} book(s).")
             rerun()
 def bulk_upload_with_gridfs():
     st.subheader("📥 Bulk Upload Books via CSV + PDF")
