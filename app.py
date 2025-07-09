@@ -164,11 +164,16 @@ def admin_dashboard():
 def user_dashboard(user):
     import datetime
     import re
+
+    user = user.lower()
+
+    st.subheader("📊 Your Dashboard")
+
     logs = list(logs_col.find({
-    "user": user,
-    "type": "download",
-    "$or": [{"hidden": {"$exists": False}}, {"hidden": False}]
-}))
+        "user": user,
+        "type": "download",
+        "$or": [{"hidden": {"$exists": False}}, {"hidden": False}]
+    }).sort("timestamp", -1))
 
     def clean_text(text):
         if not isinstance(text, str):
@@ -178,39 +183,34 @@ def user_dashboard(user):
         text = re.sub(r'[^\x20-\x7E]', '', text)
         return text
 
-    st.subheader("📊 Your Dashboard")
-
-    user = user.lower()
-
     if logs:
+        st.write("🧾 Total Downloads:", len(logs))
         df = pd.DataFrame(logs)
         df['timestamp'] = pd.to_datetime(df['timestamp'])
 
-        selected_date = st.date_input(
-            "Filter downloads by date", 
-            value=datetime.datetime.utcnow().date()
-        )
+        selected_date = st.date_input("📅 Filter downloads by date", value=datetime.datetime.utcnow().date())
 
         df_filtered = df[df['timestamp'].dt.date == selected_date]
+
+        if df_filtered.empty:
+            st.info("No downloads found for this date. Showing your most recent 10 downloads:")
+            df_filtered = df.head(10)
 
         df_filtered['book_clean'] = df_filtered['book'].apply(clean_text)
         df_filtered['author_clean'] = df_filtered['author'].apply(clean_text)
 
         dupes = df_filtered[df_filtered.duplicated(subset=['book_clean', 'author_clean'], keep=False)]
         if not dupes.empty:
-            st.write("⚠️ Duplicates detected BEFORE deduplication:")
+            st.warning("⚠️ Duplicates detected BEFORE deduplication:")
             st.dataframe(dupes[['book', 'author', 'language', 'timestamp']])
 
         df_filtered = df_filtered.drop_duplicates(subset=['book_clean', 'author_clean', 'language'])
 
-        st.write(f"📥 Download History for {selected_date}")
-        if not df_filtered.empty:
-            st.dataframe(df_filtered[['book', 'author', 'language', 'timestamp']])
-        else:
-            st.info("No downloads found for this date.")
+        st.write(f"📥 Download History for {selected_date}:")
+        st.dataframe(df_filtered[['book', 'author', 'language', 'timestamp']])
     else:
         st.info("You haven't downloaded any books yet.")
-    
+
     if st.button("🧹 Clear My Download History"):
         result = logs_col.update_many(
             {"user": user, "type": "download"},
