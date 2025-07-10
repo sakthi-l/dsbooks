@@ -160,8 +160,6 @@ def admin_dashboard():
         st.dataframe(df)
         fig = px.bar(df, x="Course", y="Count", title="Books per Course")
         st.plotly_chart(fig)
-
-# --- User Dashboard ---
 def user_dashboard(user):
     import datetime
     import re
@@ -186,36 +184,44 @@ def user_dashboard(user):
     if logs:
         df = pd.DataFrame(logs)
         df['timestamp'] = pd.to_datetime(df['timestamp'])
+        df['book_clean'] = df['book'].apply(clean_text)
+        df['author_clean'] = df['author'].apply(clean_text)
+        df['date'] = df['timestamp'].dt.date
 
         selected_date = st.date_input(
-            "Filter downloads by date", 
+            "Filter downloads by date",
             value=datetime.datetime.utcnow().date()
         )
 
-        df_filtered = df[df['timestamp'].dt.date == selected_date]
+        df_filtered = df[df['date'] == selected_date]
 
-        df_filtered['book_clean'] = df_filtered['book'].apply(clean_text)
-        df_filtered['author_clean'] = df_filtered['author'].apply(clean_text)
-
-        dupes = df_filtered[df_filtered.duplicated(subset=['book_clean', 'author_clean'], keep=False)]
+        # Detect duplicates before dropping
+        dupes = df_filtered[df_filtered.duplicated(
+            subset=['book_clean', 'author_clean', 'language', 'date'], keep=False)]
         if not dupes.empty:
-            st.write("⚠️ Duplicates detected BEFORE deduplication:")
+            st.warning("⚠️ Duplicates detected BEFORE deduplication:")
             st.dataframe(dupes[['book', 'author', 'language', 'timestamp']])
 
-        df_filtered = df_filtered.drop_duplicates(subset=['book_clean', 'author_clean', 'language'])
+        # Drop duplicates based on book+author+language+date
+        df_filtered = df_filtered.drop_duplicates(
+            subset=['book_clean', 'author_clean', 'language', 'date'])
 
         st.write(f"📥 Download History for {selected_date}")
         if not df_filtered.empty:
             st.dataframe(df_filtered[['book', 'author', 'language', 'timestamp']])
 
             if st.button("🧹 Clear This Date's Downloads"):
-                book_ids = df_filtered[["book_clean", "author_clean", "language"]].drop_duplicates().to_dict("records")
+                book_ids = df_filtered[["book_clean", "author_clean", "language", "date"]].drop_duplicates().to_dict("records")
                 for entry in book_ids:
                     logs_col.update_many({
                         "user": user,
                         "book": {"$regex": entry["book_clean"], "$options": "i"},
                         "author": {"$regex": entry["author_clean"], "$options": "i"},
-                        "language": entry["language"]
+                        "language": entry["language"],
+                        "timestamp": {
+                            "$gte": datetime.datetime.combine(entry["date"], datetime.time.min),
+                            "$lt": datetime.datetime.combine(entry["date"], datetime.time.max)
+                        }
                     }, {
                         "$set": {"hidden": True}
                     })
@@ -360,11 +366,12 @@ def search_books():
 
                     if not st.session_state.get(session_key):
                         download_log_exists = logs_col.find_one({
-                            "user": current_user.lower() if current_user else "guest",
-                            "book": book["title"],
-                            "timestamp": {"$gte": today_start}
-                        })
-
+    "user": current_user.lower() if current_user else "guest",
+    "book": book["title"],
+    "author": book.get("author"),
+    "language": book.get("language"),
+    "timestamp": {"$gte": today_start}
+})
                         if not download_log_exists:
                             logs_col.insert_one({
                                 "type": "download",
